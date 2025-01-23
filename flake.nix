@@ -23,8 +23,6 @@
     };
   };
 
-
-
   outputs = { self, nixpkgs, uv2nix, pyproject-nix, pyproject-build-systems }:
     let
       inherit (nixpkgs) lib;
@@ -58,5 +56,42 @@
           overlay
         ]);
     in {
+      # Development shell for hello-world project
+      devShells.aarch64-darwin.default = let
+
+        # This overlay configuration enables "editable mode" for local Python packages.
+        # In editable mode, Python looks for packages in your source directory rather than 
+        # site-packages, allowing you to modify code without rebuilding the environment.
+        editableOverlay =
+          workspace.mkEditablePyprojectOverlay { root = "$REPO_ROOT"; };
+
+        # Create Python set with the editable overlay applied.
+        editablePythonSet = pythonSet.overrideScope (final: prev: {
+          hello-world = prev.hello-world.overrideAttrs (old: {
+            # Add editables build dependency
+            nativeBuildInputs = old.nativeBuildInputs
+              ++ final.resolveBuildSystem { editables = [ ]; };
+          });
+        });
+
+        # Create a virtual environment from our editable package set.
+        # This venv will contain all dependencies (workspace.deps.all includes optional deps),
+        # with local packages installed in editable mode.
+        localVenv =
+          editablePythonSet.mkVirtualEnv "hello-world-env" workspace.deps.all;
+
+      in pkgs.mkShell {
+        # Include the virtual environment and development tools:
+        # - uv: Modern Python package installer and resolver
+        # - git: Required for getting the repository root
+        packages = [ localVenv python pkgs.uv pkgs.git pkgs.btop ];
+
+        shellHook = ''
+          unset PYTHONPATH
+          export UV_NO_SYNC=1
+          export UV_PYTHON_DOWNLOADS=never 
+          export REPO_ROOT=$(git rev-parse --show-toplevel)
+        '';
+      };
     };
 }
