@@ -55,7 +55,24 @@
           pyproject-build-systems.overlays.default
           overlay
         ]);
+
+      # Package hello into executable using uv2nix
+      app = let
+        # Import the build util function from pyproject-nix
+        mkApp = pkgs.callPackage pyproject-nix.build.util { };
+      in mkApp.mkApplication {
+        # Use the function passing two arguments: the Python package set and the package name.
+        venv = pythonSet.mkVirtualEnv "hello" {
+          # Use only the default dependencies for the hello package
+          inherit (workspace.deps.default) hello;
+        };
+        package = pythonSet.hello;
+      };
+
     in {
+      # Packages for hello-world project
+      packages.aarch64-darwin = { app = app; };
+
       # Development shell for hello-world project
       devShells.aarch64-darwin.default = let
 
