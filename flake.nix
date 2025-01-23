@@ -26,7 +26,7 @@
   outputs = { self, nixpkgs, uv2nix, pyproject-nix, pyproject-build-systems }:
     let
       inherit (nixpkgs) lib;
-      pkgs = nixpkgs.legacyPackages.aarch64-darwin;
+      pkgs = nixpkgs.legacyPackages.aarch64-linux;
 
       # Use Python 3.12 from nixpkgs
       python = pkgs.python312;
@@ -51,6 +51,13 @@
         # Use base package set from pyproject.nix builders
         (pkgs.callPackage pyproject-nix.build.packages {
           inherit python;
+          # Add the stdenv override here to set the MacOS SDK version
+          stdenv = pkgs.stdenv.override {
+            targetPlatform = pkgs.stdenv.targetPlatform // {
+              # This sets MacOS SDK version to 15.1 (Darwin 24)
+              darwinSdkVersion = "13.3";
+            };
+          };
         }).overrideScope (lib.composeManyExtensions [
           pyproject-build-systems.overlays.default
           overlay
@@ -71,7 +78,19 @@
 
     in {
       # Packages for hello-world project
-      packages.aarch64-darwin = { app = app; };
+      packages.aarch64-darwin = {
+        app = app;
+
+        # Use the `dockerTools.buildImage` function from Nixpkgs to create a Docker image.
+        # More on: https://nix.dev/tutorials/nixos/building-and-running-docker-images.html
+        docker = pkgs.dockerTools.buildImage {
+          name = "hello-image";
+          tag = "latest";
+          created = "now";
+
+          config = { Cmd = [ "${app}/bin/hello" ]; };
+        };
+      };
 
       # Development shell for hello-world project
       devShells.aarch64-darwin.default = let
@@ -101,7 +120,7 @@
         # Include the virtual environment and development tools:
         # - uv: Modern Python package installer and resolver
         # - git: Required for getting the repository root
-        packages = [ localVenv python pkgs.uv pkgs.git pkgs.btop ];
+        packages = [ localVenv python pkgs.uv pkgs.git pkgs.docker ];
 
         shellHook = ''
           unset PYTHONPATH
